@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <chrono>
+#include <mutex>
 #include "date.h"
 #if defined(__WIN32__)
 #include <winsock2.h>
@@ -28,31 +29,73 @@
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_opengl3.h"
 
+bool live = true;
+
 std::string CurrentDate()
 {
     std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-
     char buf[16] = { 0 };
     std::strftime(buf, sizeof(buf), "%Y-%m-%d", std::localtime(&now));
-
     return std::string(buf);
 }
 
 /**
  * @note This file is NOT the centralized server's code.
 */
-void update(int socketdescriptor, char *buf, int size, std::vector<std::string> &logger)
-{
-    while(1)
+void update(int socketdescriptor, char *buf, int size, std::vector<std::string> &logger, std::unordered_map<int, std::string> &phonebook, std::vector<int> &clientDescriptors)
+{   
+    std::mutex locker;
+    char nameBuffer[BUFSIZ];
+    ::send(socketdescriptor, "Please identify yourself", strlen("Please identify yourself"), 0);
+    ::recvfrom(socketdescriptor, nameBuffer, BUFSIZ, 0, NULL, NULL);
+
+    locker.lock();
+    /* Broadcast new member */
+    for(int i = 0; i < clientDescriptors.size(); i++)
     {
-        ::recv(socketdescriptor, buf, size, 0);
+        ::send(clientDescriptors[i], (std::string("Welcome ") + std::string(nameBuffer) + std::string(" into the room.\n")).c_str(), (std::string("Welcome ") + std::string(nameBuffer) + std::string(" into the room.\n")).length(), 0);
+    }
+    clientDescriptors.push_back(socketdescriptor);
+    phonebook[socketdescriptor] = std::string(nameBuffer);
+    locker.unlock();
+    
+    
+    char mutexBuffer[BUFSIZ];
+    while(live)
+    {
+        ::recv(socketdescriptor, mutexBuffer, size, 0);
+        locker.lock();
+        memcpy(buf, mutexBuffer, BUFSIZ);
+        /* Broadcast new message */
+        for(int i = 0; i < clientDescriptors.size(); i++)
+        {
+            if(socketdescriptor != clientDescriptors[i])
+                ::send(clientDescriptors[i], (phonebook[clientDescriptors[i]] + std::string(": ") + std::string(buf)).c_str(), (phonebook[clientDescriptors[i]] + std::string(": ") + std::string(buf)).length(), 0);
+        }
         logger.push_back(date::format("%F %T", std::chrono::system_clock::now()) + std::string(" Remote: ") + std::string(buf));
         memset(buf, 0, BUFSIZ);
+        locker.unlock();
+    }
+}
+
+void newClientAccepter(int socketDescriptor, std::vector<int> &clientDescriptors, char *recvbuf, int size, std::vector<std::string> &chatHistory, std::unordered_map<int, std::string> &phonebook)
+{
+    char userNameBuffer[BUFSIZ];
+    while(live)
+    {
+        int cd;
+        sockaddr client;
+        socklen_t client_len;
+        if((cd = ::accept(socketDescriptor, &client, &client_len)) < 0)
+            throw std::runtime_error("failed to accept");
+        std::thread receiving(update, cd, recvbuf, BUFSIZ, std::ref(chatHistory), std::ref(phonebook), std::ref(clientDescriptors));
+        receiving.detach();
     }
 }
 
 int main(int argc, char **argv)
 {
+    /* Creating resources */
     int sd = socket(AF_INET, SOCK_STREAM, 0);
     char sendbuf[BUFSIZ];
     char recvbuf[BUFSIZ];
@@ -61,17 +104,17 @@ int main(int argc, char **argv)
     server_sockaddr.sin_port = htons(12001);
     server_sockaddr.sin_family = AF_INET;
     server_sockaddr.sin_addr.s_addr = inet_addr("0.0.0.0");
+    
+    /* binding port */
     if(::bind(sd, reinterpret_cast<sockaddr*>(&server_sockaddr), sizeof(server_sockaddr)) < 0)
         throw std::runtime_error("failed to bind port");
     if(::listen(sd, 10) < 0)
         throw std::runtime_error("failed to listen");
-    int cd;
-    sockaddr client;
-    socklen_t client_len;
-    if((cd = ::accept(sd, &client, &client_len)) < 0)
-        throw std::runtime_error("failed to accept");
-    std::thread receiving(update, cd, recvbuf, BUFSIZ, std::ref(chatHistory));
-    receiving.detach();
+
+    std::vector<int> clientDescriptors;
+    std::unordered_map<int, std::string> phonebook;
+    std::thread accepter(newClientAccepter, sd, std::ref(clientDescriptors), recvbuf, BUFSIZ, std::ref(chatHistory), std::ref(phonebook));
+    accepter.detach();
 
     // Setup SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
@@ -123,12 +166,6 @@ int main(int argc, char **argv)
             ImGui::Begin("Messages");
             ImGui::InputText("Chat", sendbuf, BUFSIZ);
             ImGui::SameLine();
-            if(ImGui::Button("Send"))
-            {
-                ::send(cd, sendbuf, BUFSIZ, 0);
-                chatHistory.push_back(date::format("%F %T", std::chrono::system_clock::now()) + std::string(" You: ") + std::string(sendbuf));
-                memset(sendbuf, 0, BUFSIZ);
-            }
             for(int i = 0; i < chatHistory.size(); i++)
             {
                 ImGui::Text("%s", chatHistory[i].c_str());
