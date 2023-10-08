@@ -44,11 +44,16 @@ std::string CurrentDate()
 */
 void update(int socketdescriptor, char *buf, int size, std::vector<std::string> &logger, std::unordered_map<int, std::string> &phonebook, std::vector<int> &clientDescriptors)
 {   
+    bool updating = true;
     std::mutex locker;
     char nameBuffer[BUFSIZ];
     ::send(socketdescriptor, "Please identify yourself", strlen("Please identify yourself"), 0);
-    ::recvfrom(socketdescriptor, nameBuffer, BUFSIZ, 0, NULL, NULL);
-
+    if(::recvfrom(socketdescriptor, nameBuffer, BUFSIZ, 0, NULL, NULL) <= 0)
+    {
+        std::cout << "failed to register." << std::endl;
+        close(socketdescriptor);
+        return;
+    }
     locker.lock();
     /* Broadcast new member */
     for(int i = 0; i < clientDescriptors.size(); i++)
@@ -61,16 +66,21 @@ void update(int socketdescriptor, char *buf, int size, std::vector<std::string> 
     
     
     char mutexBuffer[BUFSIZ];
-    while(live)
+    while(live && updating)
     {
-        ::recv(socketdescriptor, mutexBuffer, size, 0);
+        if(::recv(socketdescriptor, mutexBuffer, size, 0) <= 0)
+        {
+            std::cout << phonebook[socketdescriptor] + " disconnected." << std::endl;
+            close(socketdescriptor);
+            return;  
+        }
         locker.lock();
         memcpy(buf, mutexBuffer, BUFSIZ);
         /* Broadcast new message */
         for(int i = 0; i < clientDescriptors.size(); i++)
         {
             if(socketdescriptor != clientDescriptors[i])
-                ::send(clientDescriptors[i], (phonebook[clientDescriptors[i]] + std::string(": ") + std::string(buf)).c_str(), (phonebook[clientDescriptors[i]] + std::string(": ") + std::string(buf)).length(), 0);
+                ::send(clientDescriptors[i], (phonebook[socketdescriptor] + std::string(": ") + std::string(buf)).c_str(), (phonebook[socketdescriptor] + std::string(": ") + std::string(buf)).length(), 0);
         }
         logger.push_back(date::format("%F %T", std::chrono::system_clock::now()) + std::string(" Remote: ") + std::string(buf));
         memset(buf, 0, BUFSIZ);
@@ -155,7 +165,11 @@ int main(int argc, char **argv)
         {
             ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT)
+            {
+                close(sd);
                 done = true;
+                return 0;
+            }
             if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
                 done = true;
         }
@@ -164,12 +178,11 @@ int main(int argc, char **argv)
         ImGui::NewFrame();
         {
             ImGui::Begin("Messages");
-            ImGui::InputText("Chat", sendbuf, BUFSIZ);
-            ImGui::SameLine();
             for(int i = 0; i < chatHistory.size(); i++)
             {
                 ImGui::Text("%s", chatHistory[i].c_str());
             }
+            ImGui::SetScrollY(ImGui::GetScrollMaxY());
             ImGui::End();
         }
         // Rendering
@@ -180,6 +193,6 @@ int main(int argc, char **argv)
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         SDL_GL_SwapWindow(window);
     }
-    
+    close(sd);
     return 0;
 }
