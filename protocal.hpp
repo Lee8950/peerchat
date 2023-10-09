@@ -2,10 +2,12 @@
 #define ECL_CHAT_PROTOCAL_HPP 1
 
 #include <string>
+#include <unordered_map>
 
 /**
  * @version 0.0.1: Big shoutout to liuzn5@mail2.sysu.edu.cn for contributing these tools.
- * Made some small changes to match the project's coding
+ * Made some small changes to match the project's coding.
+ * @version 0.1.0: Fix bugs. Now it works :)
 */
 
 namespace ecl {
@@ -17,6 +19,37 @@ enum commandType
     LOGIN,
     DELETE,
 };
+
+namespace isolatedGlobalVariables {
+
+std::unordered_map<std::string, ecl::commandType> strToCommandType {
+    {"TEXT", commandType::TEXT},
+    {"REG", commandType::REG},
+    {"LOGIN", commandType::LOGIN},
+    {"DELETE", commandType::DELETE}
+};
+std::unordered_map<ecl::commandType, std::string> commandTypeToStr {
+    {commandType::TEXT, "TEXT"},
+    {commandType::REG, "REG"},
+    {commandType::LOGIN, "LOGIN"},
+    {commandType::DELETE, "DELETE"}
+};
+
+}
+
+struct commandTypeDict{
+    static std::string translate(const ecl::commandType &cmd) {
+        return isolatedGlobalVariables::commandTypeToStr[cmd];
+    }
+    static ecl::commandType translate(const std::string &str) {
+        return isolatedGlobalVariables::strToCommandType[str];
+    }
+    static bool isCommandRegistered(const std::string &str) {
+        return isolatedGlobalVariables::strToCommandType.find(str) != isolatedGlobalVariables::strToCommandType.end();
+    }
+};
+
+
 
 struct command
 {
@@ -40,7 +73,10 @@ command deserializeCommand(const std::string &data)
     if (delimiterPos != std::string::npos)
     {
         command parsedCommand;
-        parsedCommand.type = static_cast<commandType>(std::stoi(data.substr(0, delimiterPos)));
+        auto tmp = data.substr(0, delimiterPos);
+        if(commandTypeDict::translate(tmp))
+            return command{TEXT, "Invalid command"};
+        parsedCommand.type = commandTypeDict::translate(tmp);
         parsedCommand.content = data.substr(delimiterPos + 1);
         return parsedCommand;
     }
