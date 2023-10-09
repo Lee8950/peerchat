@@ -196,3 +196,21 @@ int main(int argc, char **argv)
     close(sd);
     return 0;
 }
+
+enum COMMAND_TYPE{
+    TEXT,
+    REG,
+    LOGIN,
+    RENAME,
+    DELETE
+};
+
+struct COMMAND{
+    COMMAND_TYPE type;
+    std::string content;
+};
+
+COMMAND parser(std::string content="LOGIN ACCOUNT")
+{
+    return COMMAND{LOGIN, std::string("ACCOUNT")};
+}

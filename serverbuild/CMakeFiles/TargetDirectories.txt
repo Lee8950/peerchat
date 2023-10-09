@@ -1,3 +1,0 @@
-/home/lee8950/p2pChat/serverbuild/CMakeFiles/server.dir
-/home/lee8950/p2pChat/serverbuild/CMakeFiles/edit_cache.dir
-/home/lee8950/p2pChat/serverbuild/CMakeFiles/rebuild_cache.dir

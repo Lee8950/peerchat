@@ -130,6 +130,7 @@ int main(int argc, char **argv)
             {
                 ImGui::Text("%s", chatHistory[i].c_str());
             }
+            ImGui::SetScrollY(ImGui::GetScrollMaxY());
             ImGui::End();
         }
         // Rendering
