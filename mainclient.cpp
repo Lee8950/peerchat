@@ -7,16 +7,17 @@
 #include <algorithm>
 #include <unordered_map>
 #include <chrono>
+#include <cstring>
+#include <cstdio>
+#include <cstdlib>
 #include "date.h"
+#include "ed25519.hpp"
 #if defined(__WIN32__)
 #include <winsock2.h>
 #elif defined(__linux__)
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
-#include <cstring>
-#include <cstdio>
-#include <cstdlib>
 #include <unistd.h>
 #include <sys/time.h>
 #endif
