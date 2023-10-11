@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include "date.h"
 #include "ed25519.hpp"
+#include "protocal.hpp"
 #if defined(__WIN32__)
 #include <winsock2.h>
 #elif defined(__linux__)
@@ -52,23 +53,30 @@ void update(int socketdescriptor, char *buf, int size, std::vector<std::string> 
     }
 }
 
+bool fillInfoAndConnect(sockaddr_in *psockaddr, std::string ipAddress, std::string port, int socketDescriptor, char *buf, int bufSize, std::vector<std::string>& chatHistory)
+{
+    std::cout << port.c_str();
+    psockaddr->sin_port = htons(atoi(port.c_str()));
+    psockaddr->sin_family = AF_INET;
+    psockaddr->sin_addr.s_addr = inet_addr(ipAddress.c_str());
+    if(::connect(socketDescriptor, reinterpret_cast<sockaddr*>(psockaddr), sizeof(sockaddr)) < 0) {
+        //throw std::runtime_error("failed to connect");
+        return false;
+    }
+    std::thread receiving(update, socketDescriptor, buf, BUFSIZ, std::ref(chatHistory));
+    receiving.detach();
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     int sd = socket(AF_INET, SOCK_STREAM, 0);
+    char genbuf[BUFSIZ];
+    char pribuf[BUFSIZ];
     char sendbuf[BUFSIZ];
     char recvbuf[BUFSIZ];
     std::vector<std::string> chatHistory;
     sockaddr_in server_sockaddr;
-    server_sockaddr.sin_port = htons(12001);
-    server_sockaddr.sin_family = AF_INET;
-    if(argc < 2)
-        server_sockaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    else
-        server_sockaddr.sin_addr.s_addr = inet_addr(argv[1]);
-    if(::connect(sd, reinterpret_cast<sockaddr*>(&server_sockaddr), sizeof(server_sockaddr)) < 0)
-        throw std::runtime_error("failed to connect");
-    std::thread receiving(update, sd, recvbuf, BUFSIZ, std::ref(chatHistory));
-    receiving.detach();
 
     // Setup SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
@@ -102,6 +110,9 @@ int main(int argc, char **argv)
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     // Main loop
     bool done = false;
+    bool isLogon = false;
+    bool isConnected = false;
+    std::string lastRecord = " ";
     while (!done)
     {
         SDL_Event event;
@@ -117,6 +128,25 @@ int main(int argc, char **argv)
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
         //ImGui::ShowDemoWindow();
+        if(!isConnected)
+        {
+            ImGui::Begin("Connect to a server");
+            ImGui::InputText("Server IP", genbuf, BUFSIZ);
+            ImGui::InputText("Server Port", pribuf, BUFSIZ);
+            if(ImGui::Button("Connect"))
+            {
+                isConnected = fillInfoAndConnect(&server_sockaddr, genbuf, pribuf, sd, recvbuf, BUFSIZ, chatHistory);
+                if(!isConnected)
+                    lastRecord = "Failed to connect";
+            }
+            ImGui::Text("%s", lastRecord.c_str());
+            ImGui::End();
+        }
+        if(!isLogon && isConnected)
+        {
+            
+        }
+        if(isLogon && isConnected)
         {
             ImGui::Begin("Messages");
             ImGui::InputText("Chat", sendbuf, BUFSIZ);

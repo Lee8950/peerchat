@@ -34,6 +34,7 @@
 
 bool live = true;
 constexpr int maxRetry = 3;
+constexpr int signatureSize = 64;
 std::array<unsigned char, 32> serverPublicKey;
 std::array<unsigned char, 64> serverPrivateKey;
 std::unordered_map<std::string, std::array<unsigned char, 32>> registeredUsers;
@@ -101,7 +102,9 @@ void update(int socketdescriptor, char *buf, int size, std::vector<std::string> 
                 }
                 else
                 {
-                    std::array<unsigned char, 64> signedMessage;
+                    //std::array<unsigned char, 64> signedMessage;
+                    std::vector<unsigned char> signedMessage;
+                    signedMessage.resize(signatureSize);
                     memcpy(signedMessage.data(), handshakeBuffer, 64);
                     /* Verifying */
                     if(ed25519_verify(signedMessage.data(), reinterpret_cast<const unsigned char*>(timeStamp.c_str()),

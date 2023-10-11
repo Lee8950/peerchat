@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(eclChat LANGUAGES CXX)
+#project(eclChat LANGUAGES CXX)
+project(eclChat)
 
 option(SERVER "build server" OFF)
 
@@ -31,6 +32,8 @@ set(SRC_LIST ${SRC_LIST} ${IMGUI_HOME}/imgui_tables.cpp)
 set(SRC_LIST ${SRC_LIST} ${IMGUI_HOME}/imgui_widgets.cpp)
 set(SRC_LIST ${SRC_LIST} ${IMGUI_HOME}/backends/imgui_impl_opengl3.cpp)
 set(SRC_LIST ${SRC_LIST} ${IMGUI_HOME}/backends/imgui_impl_sdl2.cpp)
+
+# message("${SRC_LIST}")
 
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O0 -L/usr/lib/x86_64-linux-gnu")
