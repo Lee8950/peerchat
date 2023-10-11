@@ -14,25 +14,34 @@ namespace ecl {
 
 enum commandType
 {
+    NOTAUTHORIZED,
     TEXT,
     REG,
     LOGIN,
+    LOGINRESPOND,
     DELETE,
+    SUCCESS
 };
 
 namespace isolatedGlobalVariables {
 
 std::unordered_map<std::string, ecl::commandType> strToCommandType {
+    {"NOTAUTHORIZED", commandType::NOTAUTHORIZED},
     {"TEXT", commandType::TEXT},
     {"REG", commandType::REG},
     {"LOGIN", commandType::LOGIN},
-    {"DELETE", commandType::DELETE}
+    {"LOGINRESPOND", commandType::LOGINRESPOND},
+    {"DELETE", commandType::DELETE},
+    {"SUCCESS", commandType::SUCCESS}
 };
 std::unordered_map<ecl::commandType, std::string> commandTypeToStr {
+    {commandType::NOTAUTHORIZED, "NOTAUTHORIZED"},
     {commandType::TEXT, "TEXT"},
     {commandType::REG, "REG"},
     {commandType::LOGIN, "LOGIN"},
-    {commandType::DELETE, "DELETE"}
+    {commandType::LOGINRESPOND, "LOGINRESPOND"},
+    {commandType::DELETE, "DELETE"},
+    {commandType::SUCCESS, "SUCCESS"}
 };
 
 }
@@ -48,8 +57,6 @@ struct commandTypeDict{
         return isolatedGlobalVariables::strToCommandType.find(str) != isolatedGlobalVariables::strToCommandType.end();
     }
 };
-
-
 
 struct command
 {

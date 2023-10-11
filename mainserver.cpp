@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <deque>
 #include <exception>
@@ -10,6 +11,7 @@
 #include <mutex>
 #include "date.h"
 #include "ed25519.hpp"
+#include "protocal.hpp"
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
@@ -31,6 +33,25 @@
 #include "imgui_impl_opengl3.h"
 
 bool live = true;
+constexpr int maxRetry = 3;
+std::array<unsigned char, 32> serverPublicKey;
+std::array<unsigned char, 64> serverPrivateKey;
+std::unordered_map<std::string, std::array<unsigned char, 32>> registeredUsers;
+
+void loadKey()
+{
+    std::fstream keyPairLoader;
+    keyPairLoader.open("server.key", std::ios::in);
+    /* Keys exist, just load */
+    if(keyPairLoader.is_open())
+    {
+        
+    }
+    else /* Creating keys */
+    {
+
+    }
+}
 
 std::string CurrentDate()
 {
@@ -47,22 +68,84 @@ void update(int socketdescriptor, char *buf, int size, std::vector<std::string> 
 {   
     bool updating = true;
     std::mutex locker;
-    char nameBuffer[BUFSIZ];
-    ::send(socketdescriptor, "Please identify yourself", strlen("Please identify yourself"), 0);
-    if(::recvfrom(socketdescriptor, nameBuffer, BUFSIZ, 0, NULL, NULL) <= 0)
+    char handshakeBuffer[BUFSIZ];
+    ::send(socketdescriptor, ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Please identify yourself"}).c_str(), 
+            ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Please identify yourself"}).length(), 0);
+    
+    /* Start matching */
+    int loginAttempts = 0;
+    bool isAuthorized = false;
+    std::string username;
+    while(!isAuthorized)
     {
-        std::cout << "failed to register." << std::endl;
-        close(socketdescriptor);
-        return;
+        if(::recvfrom(socketdescriptor, handshakeBuffer, BUFSIZ, 0, NULL, NULL) <= 0)
+        {
+            std::cout << "Remote closed connection." << std::endl;
+            close(socketdescriptor);
+            return;
+        }
+        ecl::command initCommand = ecl::deserializeCommand(std::string(handshakeBuffer));
+        std::string attemptLoginUsername = initCommand.content;
+        switch(initCommand.type) {
+            case ecl::LOGIN: {
+                std::string timeStamp = std::to_string(std::chrono::nanoseconds(std::chrono::high_resolution_clock::now().time_since_epoch()).count());
+                ::send(socketdescriptor, ecl::serializeCommand(ecl::command{ecl::LOGINRESPOND, timeStamp}).c_str(),
+                        ecl::serializeCommand(ecl::command{ecl::LOGINRESPOND, timeStamp}).length(), 0);
+                ::recvfrom(socketdescriptor, handshakeBuffer, BUFSIZ, 0, NULL, NULL);
+                auto loginRespond = ecl::deserializeCommand(std::string(handshakeBuffer));
+                if(loginRespond.type != ecl::LOGINRESPOND)
+                {
+                    ::send(socketdescriptor, ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Invalid operation."}).c_str(),
+                        ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Invalid operation."}).length(), 0);
+                    loginAttempts++;
+                }
+                else
+                {
+                    std::array<unsigned char, 64> signedMessage;
+                    memcpy(signedMessage.data(), handshakeBuffer, 64);
+                    /* Verifying */
+                    if(ed25519_verify(signedMessage.data(), reinterpret_cast<const unsigned char*>(timeStamp.c_str()),
+                        signedMessage.size(), registeredUsers[attemptLoginUsername].data()))
+                    {
+                        ::send(socketdescriptor, ecl::serializeCommand(ecl::command{ecl::SUCCESS, "User logon."}).c_str(),
+                            ecl::serializeCommand(ecl::command{ecl::SUCCESS, "User logon."}).length(), 0);
+                        isAuthorized = true;
+                        username = attemptLoginUsername;
+                        break;
+                    }
+                    else
+                    {
+                        ::send(socketdescriptor, ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Incorrect keys."}).c_str(),
+                            ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Incorrect keys."}).length(), 0);
+                    }
+                }
+            }
+            break;
+            case ecl::REG: {
+                
+            }break;
+            default:
+                ::send(socketdescriptor, ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Invalid operation."}).c_str(),
+                        ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Invalid operation."}).length(), 0);
+                loginAttempts++;
+            break;
+        }
+        if(loginAttempts > maxRetry) {
+            ::send(socketdescriptor, ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Maximun limit reached."}).c_str(),
+                        ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Maximun limit reached."}).length(), 0);
+            close(socketdescriptor);
+            return;
+        }
     }
+
     locker.lock();
     /* Broadcast new member */
     for(int i = 0; i < clientDescriptors.size(); i++)
     {
-        ::send(clientDescriptors[i], (std::string("Welcome ") + std::string(nameBuffer) + std::string(" into the room.\n")).c_str(), (std::string("Welcome ") + std::string(nameBuffer) + std::string(" into the room.\n")).length(), 0);
+        ::send(clientDescriptors[i], (std::string("Welcome ") + username + std::string(" into the room.\n")).c_str(), (std::string("Welcome ") + username + std::string(" into the room.\n")).length(), 0);
     }
     clientDescriptors.push_back(socketdescriptor);
-    phonebook[socketdescriptor] = std::string(nameBuffer);
+    phonebook[socketdescriptor] = std::string(username);
     locker.unlock();
     
     
@@ -198,7 +281,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-enum COMMAND_TYPE{
+/* enum COMMAND_TYPE{
     TEXT,
     REG,
     LOGIN,
@@ -214,4 +297,4 @@ struct COMMAND{
 COMMAND parser(std::string content="LOGIN ACCOUNT")
 {
     return COMMAND{LOGIN, std::string("ACCOUNT")};
-}
+} */
