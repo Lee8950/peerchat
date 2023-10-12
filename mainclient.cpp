@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <deque>
 #include <exception>
@@ -29,6 +30,8 @@
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_opengl3.h"
+
+constexpr int signatureSize = 64;
 
 std::string CurrentDate()
 {
@@ -73,6 +76,17 @@ bool fillInfoAndConnect(sockaddr_in *psockaddr, std::string ipAddress, std::stri
     std::thread receiving(update, socketDescriptor, buf, BUFSIZ, std::ref(chatHistory));
     receiving.detach();
     return true;
+}
+
+std::vector<unsigned char> readKey(std::string path)
+{
+    std::vector<unsigned char> key;
+    key.resize(64);
+    std::fstream fptr;
+    fptr.open(path, std::ios::in);
+    fptr.readsome(reinterpret_cast<char*>(key.data()), signatureSize);
+    fptr.close();
+    return key;
 }
 
 bool attemptLogin(std::string msg, std::vector<char> &privateKey)
@@ -165,7 +179,8 @@ int main(int argc, char **argv)
             ImGui::InputText("/path/to/key", keypath, BUFSIZ);
             if(ImGui::Button("Login"))
             {
-                isLogon = attemptLogin();
+                std::vector<unsigned char> key = readKey(std::string(keypath));
+                //isLogon = attemptLogin();
             }
             ImGui::SameLine();
             ImGui::Button("Register");
