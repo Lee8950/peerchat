@@ -75,16 +75,25 @@ bool fillInfoAndConnect(sockaddr_in *psockaddr, std::string ipAddress, std::stri
     return true;
 }
 
+bool attemptLogin(std::string msg, std::vector<char> &privateKey)
+{
+    
+    return false;
+}
+
 int main(int argc, char **argv)
 {
     int sd = socket(AF_INET, SOCK_STREAM, 0);
     char buf[BUFSIZ];
+    char keypath[BUFSIZ];
     char genbuf[BUFSIZ];
     char pribuf[BUFSIZ];
     char sendbuf[BUFSIZ];
     char recvbuf[BUFSIZ];
     std::vector<std::string> chatHistory;
     sockaddr_in server_sockaddr;
+
+    sprintf(keypath, "key");
 
     // Setup SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
@@ -153,7 +162,11 @@ int main(int argc, char **argv)
         if(!isLogon && isConnected)
         {
             ImGui::Begin((std::string("You are connected to ") + std::string(genbuf)).c_str());
-            ImGui::Button("Login");
+            ImGui::InputText("/path/to/key", keypath, BUFSIZ);
+            if(ImGui::Button("Login"))
+            {
+                isLogon = attemptLogin();
+            }
             ImGui::SameLine();
             ImGui::Button("Register");
             ImGui::End();
