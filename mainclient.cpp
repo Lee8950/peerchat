@@ -55,14 +55,21 @@ void update(int socketdescriptor, char *buf, int size, std::vector<std::string> 
 
 bool fillInfoAndConnect(sockaddr_in *psockaddr, std::string ipAddress, std::string port, int socketDescriptor, char *buf, int bufSize, std::vector<std::string>& chatHistory)
 {
-    std::cout << port.c_str();
+    // std::cout << port.c_str();
     psockaddr->sin_port = htons(atoi(port.c_str()));
     psockaddr->sin_family = AF_INET;
     psockaddr->sin_addr.s_addr = inet_addr(ipAddress.c_str());
+    timeval tv{};
+    tv.tv_sec = 3;
+    tv.tv_usec = 0;
+    setsockopt(socketDescriptor, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     if(::connect(socketDescriptor, reinterpret_cast<sockaddr*>(psockaddr), sizeof(sockaddr)) < 0) {
         //throw std::runtime_error("failed to connect");
         return false;
     }
+    ::recv(socketDescriptor, buf, BUFSIZ, 0);
+    chatHistory.push_back(buf);
+    memset(buf, 0, sizeof(char) * BUFSIZ);
     std::thread receiving(update, socketDescriptor, buf, BUFSIZ, std::ref(chatHistory));
     receiving.detach();
     return true;
@@ -71,6 +78,7 @@ bool fillInfoAndConnect(sockaddr_in *psockaddr, std::string ipAddress, std::stri
 int main(int argc, char **argv)
 {
     int sd = socket(AF_INET, SOCK_STREAM, 0);
+    char buf[BUFSIZ];
     char genbuf[BUFSIZ];
     char pribuf[BUFSIZ];
     char sendbuf[BUFSIZ];
@@ -144,7 +152,11 @@ int main(int argc, char **argv)
         }
         if(!isLogon && isConnected)
         {
-            
+            ImGui::Begin((std::string("You are connected to ") + std::string(genbuf)).c_str());
+            ImGui::Button("Login");
+            ImGui::SameLine();
+            ImGui::Button("Register");
+            ImGui::End();
         }
         if(isLogon && isConnected)
         {
