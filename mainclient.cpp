@@ -84,6 +84,11 @@ std::vector<unsigned char> readKey(std::string path)
     key.resize(64);
     std::fstream fptr;
     fptr.open(path, std::ios::in);
+    if(!fptr.is_open())
+    {
+        std::vector<unsigned char> empty;
+        return empty;
+    }
     fptr.readsome(reinterpret_cast<char*>(key.data()), signatureSize);
     fptr.close();
     return key;
