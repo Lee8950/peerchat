@@ -68,7 +68,7 @@ std::string serializeCommand(const command &command)
 {
     // 序列化用于通过网络发送的命令
     std::string serializedCommand;
-    serializedCommand += std::to_string(static_cast<int>(command.type)) + "|";
+    serializedCommand += commandTypeDict::translate(command.type) + "|";
     serializedCommand += command.content;
     return serializedCommand;
 }
@@ -81,7 +81,7 @@ command deserializeCommand(const std::string &data)
     {
         command parsedCommand;
         auto tmp = data.substr(0, delimiterPos);
-        if(commandTypeDict::translate(tmp))
+        if(ecl::isolatedGlobalVariables::strToCommandType.find(tmp) == ecl::isolatedGlobalVariables::strToCommandType.end())
             return command{TEXT, "Invalid command"};
         parsedCommand.type = commandTypeDict::translate(tmp);
         parsedCommand.content = data.substr(delimiterPos + 1);

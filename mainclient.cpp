@@ -12,8 +12,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include "date.h"
+#include "json/single_include/nlohmann/json.hpp"
 #include "ed25519.hpp"
 #include "protocal.hpp"
+#include "base64/base64.h"
 #if defined(__WIN32__)
 #include <winsock2.h>
 #elif defined(__linux__)
@@ -31,6 +33,10 @@
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_opengl3.h"
 
+using json = nlohmann::json;
+
+char usernamebuf[BUFSIZ];
+
 constexpr int signatureSize = 64;
 
 std::string CurrentDate()
@@ -46,8 +52,9 @@ std::string CurrentDate()
 /**
  * @note This file is NOT the centralized server's code.
 */
-void update(int socketdescriptor, char *buf, int size, std::vector<std::string> &logger)
+void update(int socketdescriptor, int size, std::vector<std::string> &logger)
 {
+    char buf[BUFSIZ];
     while(1)
     {
         ::recv(socketdescriptor, buf, size, 0);
@@ -73,7 +80,7 @@ bool fillInfoAndConnect(sockaddr_in *psockaddr, std::string ipAddress, std::stri
     ::recv(socketDescriptor, buf, BUFSIZ, 0);
     chatHistory.push_back(buf);
     memset(buf, 0, sizeof(char) * BUFSIZ);
-    std::thread receiving(update, socketDescriptor, buf, BUFSIZ, std::ref(chatHistory));
+    std::thread receiving(update, socketDescriptor, BUFSIZ, std::ref(chatHistory));
     receiving.detach();
     return true;
 }
@@ -83,7 +90,7 @@ std::vector<unsigned char> readKey(std::string path)
     std::vector<unsigned char> key;
     key.resize(64);
     std::fstream fptr;
-    fptr.open(path, std::ios::in);
+    fptr.open(path, std::ios::in | std::ios::binary);
     if(!fptr.is_open())
     {
         std::vector<unsigned char> empty;
@@ -92,12 +99,6 @@ std::vector<unsigned char> readKey(std::string path)
     fptr.readsome(reinterpret_cast<char*>(key.data()), signatureSize);
     fptr.close();
     return key;
-}
-
-bool attemptLogin(std::string msg, std::vector<char> &privateKey)
-{
-    
-    return false;
 }
 
 int main(int argc, char **argv)
@@ -111,6 +112,7 @@ int main(int argc, char **argv)
     char recvbuf[BUFSIZ];
     std::vector<std::string> chatHistory;
     sockaddr_in server_sockaddr;
+    memset(usernamebuf, 0, sizeof(usernamebuf));
 
     sprintf(keypath, "key");
 
@@ -167,6 +169,7 @@ int main(int argc, char **argv)
         if(!isConnected)
         {
             ImGui::Begin("Connect to a server");
+            ImGui::InputText("Username", usernamebuf, BUFSIZ);
             ImGui::InputText("Server IP", genbuf, BUFSIZ);
             ImGui::InputText("Server Port", pribuf, BUFSIZ);
             if(ImGui::Button("Connect"))
@@ -181,14 +184,45 @@ int main(int argc, char **argv)
         if(!isLogon && isConnected)
         {
             ImGui::Begin((std::string("You are connected to ") + std::string(genbuf)).c_str());
-            ImGui::InputText("/path/to/key", keypath, BUFSIZ);
+            ImGui::InputText("password", keypath, BUFSIZ);
             if(ImGui::Button("Login"))
             {
-                std::vector<unsigned char> key = readKey(std::string(keypath));
-                //isLogon = attemptLogin();
+                char loginbuf[BUFSIZ];
+                memset(loginbuf, 0, sizeof(loginbuf));
+                json login;
+                login["type"] = "login";
+                login["username"] = std::string(usernamebuf);
+                login["password"] = std::string(keypath);
+                std::string loginMsg = login.dump();
+                size_t loginMsgLength = loginMsg.length();
+                ::send(sd, loginMsg.c_str(), loginMsg.length(), 0);
+                timeval tv{};
+                tv.tv_sec = 5;
+                tv.tv_usec = 0;
+                setsockopt(sd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+                if(::recv(sd, loginbuf, BUFSIZ, 0) > 0)
+                {
+                    json returnMsg = json::parse(std::string(loginbuf));
+                    isLogon = (returnMsg["type"] == std::string("success"));
+                }
+                tv.tv_sec = 0;
+                tv.tv_usec = 0;
+                setsockopt(sd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
             }
             ImGui::SameLine();
-            ImGui::Button("Register");
+            if(ImGui::Button("Register"))
+            {
+                char regbuf[BUFSIZ];
+                json login;
+                login["type"] = "register";
+                login["username"] = std::string(usernamebuf);
+                login["password"] = std::string(keypath);
+                std::string loginMsg = login.dump();
+                ::send(sd, loginMsg.c_str(), loginMsg.length(), 0);
+                ::recv(sd, regbuf, BUFSIZ, 0);
+                json returnMsg = json::parse(std::string(regbuf));
+                bool isReg = (returnMsg["type"] == std::string("success"));
+            }
             ImGui::End();
         }
         if(isLogon && isConnected)
