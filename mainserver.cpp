@@ -53,8 +53,13 @@ void update(int socketdescriptor, char *buf, int size, std::vector<std::string> 
     std::mutex locker;
     char handshakeBuffer[BUFSIZ];
 
-    ::send(socketdescriptor, ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Please identify yourself"}).c_str(), 
-            ecl::serializeCommand(ecl::command{ecl::NOTAUTHORIZED, "Please identify yourself"}).length(), 0);
+    std::string timeStamp = std::to_string(std::chrono::nanoseconds(std::chrono::high_resolution_clock::now().time_since_epoch()).count());
+    json welcome;
+    welcome["type"] = "not authorized";
+    welcome["timeStamp"] = timeStamp;
+    std::string welcomeMsg = welcome.dump();
+
+    ::send(socketdescriptor, welcomeMsg.c_str(), welcomeMsg.length(), 0);
     
     /* Start matching */
     int loginAttempts = 0;
@@ -122,12 +127,18 @@ void update(int socketdescriptor, char *buf, int size, std::vector<std::string> 
 
     locker.lock();
     /* Broadcast new member */
-    for(int i = 0; i < clientDescriptors.size(); i++)
-    {
-        ::send(clientDescriptors[i], (std::string("Welcome ") + username + std::string(" into the room.\n")).c_str(), (std::string("Welcome ") + username + std::string(" into the room.\n")).length(), 0);
-    }
     clientDescriptors.push_back(socketdescriptor);
     phonebook[socketdescriptor] = std::string(username);
+    {
+        json returnStruct;
+        returnStruct["type"] = "text";
+        returnStruct["content"] = std::string("Welcome ") + username + std::string(" into the room.\n");
+        returnStruct["from"] = "server";
+        returnStruct["time"] = date::format("%F %T", std::chrono::system_clock::now());
+        std::string returnMsg = returnStruct.dump();
+        for(int i = 0; i < clientDescriptors.size(); i++)
+            ::send(clientDescriptors[i], returnMsg.c_str(), returnMsg.length(), 0);
+    }
     locker.unlock();
     
     
@@ -137,19 +148,30 @@ void update(int socketdescriptor, char *buf, int size, std::vector<std::string> 
         if(::recv(socketdescriptor, mutexBuffer, size, 0) <= 0)
         {
             std::cout << phonebook[socketdescriptor] + " disconnected." << std::endl;
+            phonebook.erase(socketdescriptor);
+            clientDescriptors.erase(std::find(clientDescriptors.begin(), clientDescriptors.end(), socketdescriptor));
             close(socketdescriptor);
             return;  
         }
         locker.lock();
         memcpy(buf, mutexBuffer, BUFSIZ);
+        memset(mutexBuffer, 0, sizeof(mutexBuffer));
         /* Broadcast new message */
+        std::string timeNow = date::format("%F %T", std::chrono::system_clock::now());
+        std::string content = json::parse(std::string(buf))["content"];
         for(int i = 0; i < clientDescriptors.size(); i++)
         {
+            json broadcast;
+            broadcast["type"] = "text";
+            broadcast["content"] = content;
+            broadcast["from"] = phonebook[socketdescriptor];
+            broadcast["time"] = timeNow;
+            std::string broadcastMsg = broadcast.dump();
             if(socketdescriptor != clientDescriptors[i])
-                ::send(clientDescriptors[i], (phonebook[socketdescriptor] + std::string(": ") + std::string(buf)).c_str(), (phonebook[socketdescriptor] + std::string(": ") + std::string(buf)).length(), 0);
+                ::send(clientDescriptors[i], broadcastMsg.c_str(), broadcastMsg.length(), 0);
         }
-        logger.push_back(date::format("%F %T", std::chrono::system_clock::now()) + std::string(" Remote: ") + std::string(buf));
-        std::cout << date::format("%F %T", std::chrono::system_clock::now()) + std::string(" Remote: ") + std::string(buf) << std::endl;
+        logger.push_back(timeNow + " " + phonebook[socketdescriptor] + ": " + content);
+        std::cout << timeNow + " " + phonebook[socketdescriptor] + ": " + content << std::endl;
         memset(buf, 0, BUFSIZ);
         locker.unlock();
     }

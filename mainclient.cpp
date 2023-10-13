@@ -13,18 +13,11 @@
 #include <cstdlib>
 #include "date.h"
 #include "json/single_include/nlohmann/json.hpp"
-#include "ed25519.hpp"
-#include "protocal.hpp"
-#include "base64/base64.h"
-#if defined(__WIN32__)
-#include <winsock2.h>
-#elif defined(__linux__)
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/time.h>
-#endif
 #include <GL/gl.h>
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_opengl.h"
@@ -36,8 +29,6 @@
 using json = nlohmann::json;
 
 char usernamebuf[BUFSIZ];
-
-constexpr int signatureSize = 64;
 
 std::string CurrentDate()
 {
@@ -52,18 +43,30 @@ std::string CurrentDate()
 /**
  * @note This file is NOT the centralized server's code.
 */
-void update(int socketdescriptor, int size, std::vector<std::string> &logger)
+void update(int socketdescriptor, int size, std::vector<std::string> &logger, json &welcome)
 {
     char buf[BUFSIZ];
+    memset(buf, 0, sizeof(buf));
+    ::recv(socketdescriptor, buf, size, 0);
+    welcome = json::parse(std::string(buf));
     while(1)
     {
+        memset(buf, 0, sizeof(buf));
         ::recv(socketdescriptor, buf, size, 0);
-        logger.push_back(date::format("%F %T", std::chrono::system_clock::now()) + std::string(" Remote: ") + std::string(buf));
-        memset(buf, 0, BUFSIZ);
+        {
+            json recvRespond = json::parse(std::string(buf));
+            if(recvRespond["type"] == "text")
+            {
+                std::string content = recvRespond["content"];
+                std::string timeNow = recvRespond["time"];
+                std::string from = recvRespond["from"];
+                logger.push_back(timeNow + " " + from + ": " + content);
+            }
+        }
     }
 }
 
-bool fillInfoAndConnect(sockaddr_in *psockaddr, std::string ipAddress, std::string port, int socketDescriptor, char *buf, int bufSize, std::vector<std::string>& chatHistory)
+bool fillInfoAndConnect(sockaddr_in *psockaddr, std::string ipAddress, std::string port, int socketDescriptor, char *buf, int bufSize, std::vector<std::string>& chatHistory, json &welcome)
 {
     // std::cout << port.c_str();
     psockaddr->sin_port = htons(atoi(port.c_str()));
@@ -77,28 +80,9 @@ bool fillInfoAndConnect(sockaddr_in *psockaddr, std::string ipAddress, std::stri
         //throw std::runtime_error("failed to connect");
         return false;
     }
-    ::recv(socketDescriptor, buf, BUFSIZ, 0);
-    chatHistory.push_back(buf);
-    memset(buf, 0, sizeof(char) * BUFSIZ);
-    std::thread receiving(update, socketDescriptor, BUFSIZ, std::ref(chatHistory));
+    std::thread receiving(update, socketDescriptor, BUFSIZ, std::ref(chatHistory), std::ref(welcome));
     receiving.detach();
     return true;
-}
-
-std::vector<unsigned char> readKey(std::string path)
-{
-    std::vector<unsigned char> key;
-    key.resize(64);
-    std::fstream fptr;
-    fptr.open(path, std::ios::in | std::ios::binary);
-    if(!fptr.is_open())
-    {
-        std::vector<unsigned char> empty;
-        return empty;
-    }
-    fptr.readsome(reinterpret_cast<char*>(key.data()), signatureSize);
-    fptr.close();
-    return key;
 }
 
 int main(int argc, char **argv)
@@ -112,6 +96,7 @@ int main(int argc, char **argv)
     char recvbuf[BUFSIZ];
     std::vector<std::string> chatHistory;
     sockaddr_in server_sockaddr;
+    json welcome;
     memset(usernamebuf, 0, sizeof(usernamebuf));
 
     sprintf(keypath, "key");
@@ -131,7 +116,7 @@ int main(int argc, char **argv)
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    SDL_Window* window = SDL_CreateWindow("ecl_Chat", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
+    SDL_Window* window = SDL_CreateWindow("ecl_Chat", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 600, window_flags);
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, gl_context);
     SDL_GL_SetSwapInterval(1); // Enable vsync
@@ -174,9 +159,11 @@ int main(int argc, char **argv)
             ImGui::InputText("Server Port", pribuf, BUFSIZ);
             if(ImGui::Button("Connect"))
             {
-                isConnected = fillInfoAndConnect(&server_sockaddr, genbuf, pribuf, sd, recvbuf, BUFSIZ, chatHistory);
+                isConnected = fillInfoAndConnect(&server_sockaddr, genbuf, pribuf, sd, recvbuf, BUFSIZ, chatHistory, welcome);
                 if(!isConnected)
                     lastRecord = "Failed to connect";
+                else
+                    lastRecord = " ";
             }
             ImGui::Text("%s", lastRecord.c_str());
             ImGui::End();
@@ -204,6 +191,10 @@ int main(int argc, char **argv)
                 {
                     json returnMsg = json::parse(std::string(loginbuf));
                     isLogon = (returnMsg["type"] == std::string("success"));
+                    if(!isLogon)
+                    {
+                        lastRecord = "failed to log in";
+                    }
                 }
                 tv.tv_sec = 0;
                 tv.tv_usec = 0;
@@ -222,17 +213,26 @@ int main(int argc, char **argv)
                 ::recv(sd, regbuf, BUFSIZ, 0);
                 json returnMsg = json::parse(std::string(regbuf));
                 bool isReg = (returnMsg["type"] == std::string("success"));
+                if(!isReg)
+                {
+                    lastRecord = "failed to register";
+                }
             }
+            ImGui::Text("%s", lastRecord.c_str());
             ImGui::End();
         }
         if(isLogon && isConnected)
         {
-            ImGui::Begin("Messages");
+            ImGui::Begin((std::string(genbuf)+std::string(":")+std::string(usernamebuf)).c_str());
             ImGui::InputText("Chat", sendbuf, BUFSIZ);
             ImGui::SameLine();
             if(ImGui::Button("Send"))
             {
-                ::send(sd, sendbuf, BUFSIZ, 0);
+                json sendStruct;
+                sendStruct["type"] = "text";
+                sendStruct["content"] = std::string(sendbuf);
+                std::string sendMsg = sendStruct.dump();
+                ::send(sd, sendMsg.c_str(), sendMsg.length(), 0);
                 chatHistory.push_back(date::format("%F %T", std::chrono::system_clock::now()) + std::string(" You: ") + std::string(sendbuf));
                 memset(sendbuf, 0, BUFSIZ);
             }

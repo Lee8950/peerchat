@@ -6,10 +6,10 @@ project(eclChat)
 option(SERVER "build server" OFF)
 
 
-include_directories("/usr/local/include/imgui")
-include_directories("/usr/local/include/imgui/backends")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/imgui")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/imgui/backends")
 
-set(IMGUI_HOME /usr/local/include/imgui)
+set(IMGUI_HOME ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 if(SERVER)
     set(SRC_LIST ${CMAKE_CURRENT_SOURCE_DIR}/mainserver.cpp)
 else()
@@ -34,9 +34,7 @@ set(SRC_LIST ${SRC_LIST} ${CMAKE_CURRENT_SOURCE_DIR}/ed25519/src/sha512.c)
 set(SRC_LIST ${SRC_LIST} ${CMAKE_CURRENT_SOURCE_DIR}/ed25519/src/sign.c)
 set(SRC_LIST ${SRC_LIST} ${CMAKE_CURRENT_SOURCE_DIR}/ed25519/src/verify.c)
 
-
 # message("${SRC_LIST}")
-
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O0 -L/usr/lib/x86_64-linux-gnu")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -L/usr/lib/x86_64-linux-gnu")
@@ -47,10 +45,7 @@ option(eclChat_VENDORED "Use vendored libraries" OFF)
 if(eclChat_VENDORED)
     add_subdirectory(vendored/sdl EXCLUDE_FROM_ALL)
 else()
-    # 1. Look for a SDL2 package, 2. look for the SDL2 component and 3. fail if none can be found
     find_package(SDL2 REQUIRED CONFIG REQUIRED COMPONENTS SDL2)
-
-    # 1. Look for a SDL2 package, 2. Look for the SDL2maincomponent and 3. DO NOT fail when SDL2main is not available
     find_package(SDL2 REQUIRED CONFIG COMPONENTS SDL2main)
 endif()
 
