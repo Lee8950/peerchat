@@ -3,9 +3,6 @@
 
 int main()
 {
-    auto cmd = ecl::deserializeCommand("TEXT|HELLO");
-    std::cout << cmd.type << ' ' << cmd.content << std::endl;
-    auto str = ecl::serializeCommand(cmd);
-    std::cout << str << std::endl;
+    assert("TEXT|HELLO" == ecl::serializeCommand(ecl::deserializeCommand("TEXT|HELLO")));
     return 0;
 }
